@@ -1,0 +1,1202 @@
+<style>
+  body {
+    font-family: "Fira Sans", "Trebuchet MS", Ubuntu, Helvetica, Arial,
+      sans-serif;
+  }
+
+  .type-table {
+    border-collapse: collapse;
+    border-radius: 4px;
+  }
+
+  .type-table td {
+    border: 1px solid #f0f0f0;
+    font-size: 0.875rem;
+  }
+
+  .type {
+    display: inline-block;
+    width: 75px;
+    border-radius: 4px;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    color: #fff;
+    line-height: 2rem;
+    text-align: center;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.7);
+    text-transform: uppercase;
+  }
+
+  .type-table>thead .type {
+    width: 45px;
+  }
+
+  .damage {
+    color: #ffdd57;
+    text-align: center;
+  }
+
+  .type-dropdown {
+    border: 1px solid #aaa;
+    border-radius: 2px;
+    padding: 4px;
+    width: 100px;
+  }
+</style>
+
+<div id="app" style="display: none">
+  <h3>Move Type Coverage</h3>
+
+  <div>
+    <select class="type-dropdown" v-model="moveTypes[0]">
+      <option></option>
+      <option v-for="entry in getMoveTypeCoverages(moveTypes, 0)" :value="entry.type">
+        {{ entry.type }} (resists: {{ entry.coverage.resists.length }}, neutral:
+        {{ entry.coverage.neutral.length }}, effective: {{
+        entry.coverage.effective.length }})
+      </option>
+    </select>
+
+    <select class="type-dropdown" v-model="moveTypes[1]" :disabled="!moveTypes[0]">
+      <option></option>
+      <option v-for="entry in getMoveTypeCoverages(moveTypes, 1)" :value="entry.type" v-if="moveTypes[0]">
+        {{ entry.type }} (resists: {{ entry.coverage.resists.length }}, neutral:
+        {{ entry.coverage.neutral.length }}, effective: {{
+        entry.coverage.effective.length }})
+      </option>
+    </select>
+
+    <select class="type-dropdown" v-model="moveTypes[2]" :disabled="!moveTypes[1]">
+      <option></option>
+      <option v-for="entry in getMoveTypeCoverages(moveTypes, 2)" :value="entry.type" v-if="moveTypes[1]">
+        {{ entry.type }} (resists: {{ entry.coverage.resists.length }}, neutral:
+        {{ entry.coverage.neutral.length }}, effective: {{
+        entry.coverage.effective.length }})
+      </option>
+    </select>
+
+    <select class="type-dropdown" v-model="moveTypes[3]" :disabled="!moveTypes[2]">
+      <option></option>
+      <option v-for="entry in getMoveTypeCoverages(moveTypes, 3)" :value="entry.type" v-if="moveTypes[2]">
+        {{ entry.type }} (resists: {{ entry.coverage.resists.length }}, neutral:
+        {{ entry.coverage.neutral.length }}, effective: {{
+        entry.coverage.effective.length }})
+      </option>
+    </select>
+  </div>
+
+  <template v-if="moveTypeCombination">
+    <h3>Resisting Types</h3>
+
+    <div v-for="i in moveTypeCombination[0].coverage.resists">
+      {{ typeScores[i].types }}
+      <template v-if="typeScores[i].ability">
+        ({{ typeScores[i].ability }})
+      </template>
+    </div>
+  </template>
+
+  <!-- <h3>Single Types</h3>
+
+    <table class="type-table">
+        <thead>
+            <tr>
+                <td>
+                    DEFENSE →
+                    <br>
+                    ATTACK ↴
+                </td>
+                <td v-for="attackType in types">
+                    <span class="type" :style="{ background: typeColors[attackType] }">
+                        {{ attackType | shortName }}
+                    </span>
+                </td>
+            </tr>
+        </thead>
+        <tbody>
+            <tr v-for="defenseType in types">
+                <td>
+                    <span class="type" :style="{ background: typeColors[defenseType] }">
+                        {{ defenseType }}
+                    </span>
+                </td>
+                <template v-for="attackType in types">
+                    <td v-if="weaknesses[defenseType][attackType] !== undefined" class="damage"
+                        :style="{ background: damageColors[weaknesses[defenseType][attackType]], fontSize: weaknesses[defenseType][attackType] > 0 && weaknesses[defenseType][attackType] < 1 ? '1.25rem' : null }">
+                        {{ weaknesses[defenseType][attackType] | asFraction }}
+                    </td>
+                    <td v-else></td>
+                </template>
+            </tr>
+        </tbody>
+    </table>
+
+    <h3>Type Combinations</h3>
+
+    <table class="type-table">
+        <thead>
+            <tr>
+                <td>
+                    DEFENSE →
+                    <br>
+                    ATTACK ↴
+                </td>
+                <td v-for="attackType in types">
+                    <span class="type" :style="{ background: typeColors[attackType] }">
+                        {{ attackType | shortName }}
+                    </span>
+                </td>
+                <td style="padding: 4px;">
+                    SCORE
+                </td>
+            </tr>
+        </thead>
+        <tbody>
+            <tr v-for="entry in typeScores">
+                <td>
+                    <span v-for="type in entry.types" class="type" :style="{ background: typeColors[type] }">
+                        {{ type }}
+                    </span>
+                </td>
+                <template v-for="attackType in types">
+                    <td v-if="entry.typeMultipliers[attackType] !== 1" class="damage"
+                        :style="{ background: damageColors[entry.typeMultipliers[attackType]], fontSize: entry.typeMultipliers[attackType] > 0 && entry.typeMultipliers[attackType] < 1 ? '1.25rem' : null }">
+                        {{ entry.typeMultipliers[attackType] | asFraction }}
+                    </td>
+                    <td v-else></td>
+                </template>
+                <td style="padding: 4px; text-align: center;">
+                    {{ entry.score }}
+                </td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h3>Teams With No Shared Weaknesses</h3> -->
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+
+<script src="https://unpkg.com/localforage@1.8.1/dist/localforage.js"></script>
+
+<script>
+  const app = new Vue({
+    el: "#app",
+    data: {
+      moveTypes: ["", "", "", ""],
+    },
+    created() {
+      document.getElementById("app").style.display = null;
+    },
+    methods: {
+      // Get the weaknesses for the type, including neutral entries
+      getTypeWeaknesses(type) {
+        return this.types.reduce((acc, attackType) => {
+          acc[attackType] =
+            this.weaknesses[type][attackType] === undefined
+              ? 1
+              : this.weaknesses[type][attackType];
+          return acc;
+        }, {});
+      },
+      multiply(dictA, dictB) {
+        return Object.keys(dictA).reduce((acc, key) => {
+          const valueA = dictA[key] === undefined ? 1 : dictA[key];
+          const valueB = dictB[key] === undefined ? 1 : dictB[key];
+
+          acc[key] = valueA * valueB;
+          return acc;
+        }, {});
+      },
+      getAllEntriesWithoutSharedWeaknesses(entries, goal) {
+        const result = [];
+
+        this.getEntriesWithoutSharedWeaknesses([], entries, result, goal);
+
+        return result.sort((a, b) => a.score - b.score);
+      },
+      getEntriesWithoutSharedWeaknesses(
+        entries,
+        remainingEntriesToFind,
+        result,
+        goal,
+        accept
+      ) {
+        if (entries.length >= goal) {
+          const score = entries.reduce(
+            (total, entry) => total + entry.score,
+            0
+          );
+
+          if (!accept || accept(entries)) {
+            result.push({
+              entries,
+              score,
+            });
+          }
+        } else if (remainingEntriesToFind.length) {
+          remainingEntriesToFind.forEach((entry, i) => {
+            if (this.noSharedWeaknesses(entry, entries))
+              this.getEntriesWithoutSharedWeaknesses(
+                [...entries, entry],
+                remainingEntriesToFind.slice(i + 1),
+                result,
+                goal,
+                accept
+              );
+          });
+        }
+      },
+      noSharedWeaknesses(entry, entries) {
+        for (const existingEntry of entries) {
+          for (const type of this.types) {
+            if (
+              entry.typeMultipliers[type] > 1 &&
+              existingEntry.typeMultipliers[type] > 1
+            )
+              return false;
+          }
+        }
+
+        return true;
+      },
+      async getTeamScores(
+        typesToExclude,
+        typesToInclude,
+        immunities,
+        fullDefensiveCoverage
+      ) {
+        let teamScores = await this.teamScores;
+
+        const pokemonForms = {
+          rotom: {
+            ability: "levitate",
+            typings: [
+              ["electric", "ghost"],
+              ["electric", "flying"],
+              ["electric", "ice"],
+              ["electric", "fire"],
+              ["electric", "grass"],
+              ["electric", "water"],
+            ],
+          },
+        };
+
+        return teamScores.filter(
+          (check) =>
+            // Extra, optional filter to have full defensive coverage
+            (!fullDefensiveCoverage ||
+              this.types.reduce(
+                (acc, type) =>
+                  acc &&
+                  check.entries.some(
+                    (entry) => entry.typeMultipliers[type] < 1
+                  ),
+                true
+              )) &&
+            (!typesToExclude ||
+              typesToExclude.reduce(
+                (acc, types) =>
+                  acc &&
+                  !check.entries.some(
+                    (entry) =>
+                      types.length >= entry.types.length &&
+                      types.filter(
+                        (type) => type === "*" || entry.types.includes(type)
+                      ).length === types.length
+                  ),
+                true
+              )) &&
+            (!typesToInclude ||
+              typesToInclude.reduce(
+                (acc, types) =>
+                  acc &&
+                  check.entries.some(
+                    (entry) =>
+                      types.length >= entry.types.length &&
+                      types.filter(
+                        (type) => type === "*" || entry.types.includes(type)
+                      ).length === types.length
+                  ),
+                true
+              )) &&
+            (!immunities ||
+              immunities.reduce(
+                (acc, type) =>
+                  acc &&
+                  check.entries.some((entry) => !entry.typeMultipliers[type]),
+                true
+              )) &&
+            // Ensure that different forms of the same pokemon aren't added
+            !Object.values(pokemonForms).some(
+              (pokemon) =>
+                pokemon.typings.filter((types) =>
+                  check.entries.some(
+                    (entry) =>
+                      entry.ability === pokemon.ability &&
+                      this.arrayElementsMatch(types, entry.types)
+                  )
+                ).length > 1
+            )
+        );
+      },
+      getAbilityImmunities(types) {
+        const abilityCombinations = {
+          "flash-fire": [
+            ["fire", "steel"],
+            ['fire', 'ghost'],
+            ['fire', 'psychic']
+          ],
+          'well-baked-body': [['fairy']],
+          'purifying-salt': [['rock']],
+          'earth-eater': [['steel']],
+          'sap-sipper': [['normal', 'psychic'], ['dragon']],
+          levitate: [
+            ["electric", "ghost"],
+            ["electric", "flying"],
+            ["electric", "ice"],
+            ["electric", "fire"],
+            ["electric", "grass"],
+            ["electric", "water"],
+            ["psychic"],
+            ["steel", "psychic"],
+            // ["poison"],
+            ["poison", "fairy"],
+            ["dragon", "psychic"],
+            ["dark", "dragon"],
+            ["bug", "electric"],
+            ["ground", "psychic"],
+            ["ground", "dragon"],
+            // ['electric']
+          ],
+          "volt-absorb": [
+            ["electric", "flying"],
+            ['electric', 'fighting'],
+            'electric'
+          ],
+          "water-absorb": [
+            ['water', 'ground'],
+            ['poison', 'ground'],
+            ['water']
+          ],
+          'storm-drain': [
+            ['water', 'dragon']
+          ],
+          "thick-fat": [["normal", 'ice'], ['grass', 'dragon']]
+        };
+
+        let result = {
+          typeMultipliers: {},
+          ability: null,
+        };
+
+        Object.keys(abilityCombinations).forEach((ability) => {
+          const combinations = abilityCombinations[ability];
+
+          if (
+            combinations.some((combination) =>
+              this.arrayElementsMatch(combination, types)
+            )
+          ) {
+            result.typeMultipliers = this.abilityImmunities[ability];
+            result.ability = ability;
+          }
+        });
+
+        return result;
+      },
+      arrayElementsMatch(A, B) {
+        return (
+          A.length === B.length &&
+          A.reduce((acc, a) => acc && B.includes(a), true)
+        );
+      },
+      getTypeScoreEntry(types, ability) {
+        let typeMultipliers = null;
+
+        types.forEach(
+          (type) =>
+          (typeMultipliers = typeMultipliers
+            ? this.multiply(typeMultipliers, this.getTypeWeaknesses(type))
+            : this.getTypeWeaknesses(type))
+        );
+
+        let abilityImmunities = { ability };
+
+        if (ability !== null) {
+          if (ability !== undefined)
+            abilityImmunities.typeMultipliers = this.abilityImmunities[ability];
+          else abilityImmunities = this.getAbilityImmunities(types);
+
+          if (abilityImmunities.ability && abilityImmunities.typeMultipliers)
+            typeMultipliers = this.multiply(
+              typeMultipliers,
+              abilityImmunities.typeMultipliers
+            );
+        }
+
+        const score = Object.values(typeMultipliers).reduce((a, b) => a + b);
+
+        return {
+          types,
+          typeMultipliers,
+          score,
+          ability: abilityImmunities.ability,
+        };
+      },
+      getScore(entries) {
+        let typeMultipliers = null;
+
+        entries.forEach(
+          (entry) =>
+          (typeMultipliers = typeMultipliers
+            ? this.multiply(typeMultipliers, entry.typeMultipliers)
+            : entry.typeMultipliers)
+        );
+
+        return Object.values(typeMultipliers).reduce((a, b) => a + b);
+      },
+      getTeam(typesToInclude, typesToExclude, teamSize, entriesToCheck, balanced = true) {
+        const entriesToInclude = (typesToInclude || []).map((types) => {
+          if (Array.isArray(types)) return this.getTypeScoreEntry(types);
+          else return this.getTypeScoreEntry(types.types, types.ability);
+        });
+
+        if (entriesToCheck) {
+          entriesToCheck = entriesToCheck.map((types) => {
+            if (Array.isArray(types)) return this.getTypeScoreEntry(types);
+            else return this.getTypeScoreEntry(types.types, types.ability);
+          });
+        }
+
+        entriesToCheck = (entriesToCheck || this.validTypeScores).filter(
+          (entry) =>
+            // Don't check what's already being included
+            !entriesToInclude.some(
+              (entryToInclude) =>
+                entry.ability === entryToInclude.ability &&
+                this.arrayElementsMatch(entry.types, entryToInclude.types)
+            ) &&
+            !(typesToExclude || []).some((types) =>
+              this.arrayElementsMatch(entry.types, types)
+            )
+        );
+
+        let result = [];
+
+        this.getEntries(entriesToInclude, entriesToCheck, result, teamSize, null, balanced);
+
+        const pokemonForms = {
+          rotom: {
+            ability: "levitate",
+            typings: [
+              ["electric", "ghost"],
+              ["electric", "flying"],
+              ["electric", "ice"],
+              ["electric", "fire"],
+              ["electric", "grass"],
+              ["electric", "water"],
+            ],
+          },
+        };
+
+        console.log(result);
+
+        result = result.filter(
+          (team) =>
+            // Ensure that different forms of the same pokemon aren't added
+            !Object.values(pokemonForms).some(
+              (pokemon) =>
+                pokemon.typings.filter((types) =>
+                  team.entries.some(
+                    (entry) =>
+                      entry.ability === pokemon.ability &&
+                      this.arrayElementsMatch(types, entry.types)
+                  )
+                ).length > 1
+            )
+        );
+
+        result.sort((a, b) => a.score - b.score);
+
+        return result;
+      },
+      weaknessesUnbalanced(entries, entry) {
+        const weaknessCounts = {};
+
+        const weaknessScores = entries.reduce((acc, entry) => {
+          Object.keys(entry.typeMultipliers).forEach((key) => {
+            const value = entry.typeMultipliers[key];
+
+            if (!acc[key]) {
+              acc[key] = 0;
+            }
+
+            if (!weaknessCounts[key]) {
+              weaknessCounts[key] = 0;
+            }
+
+            if (value > 1) {
+              acc[key]++;
+              weaknessCounts[key]++;
+            } else if (value < 1) {
+              acc[key]--;
+            }
+          });
+
+          return acc;
+        }, {});
+
+        const imbalances = Object.keys(entry.typeMultipliers).filter(
+          (key) => entry.typeMultipliers[key] > 1 && weaknessScores[key] > 0
+        ).length;
+
+        const corrections = Object.keys(entry.typeMultipliers).filter(
+          (key) => entry.typeMultipliers[key] < 1 && weaknessScores[key] > 0
+        ).length;
+
+        const highestWeakness = Object.values(weaknessCounts).reduce(
+          (a, b) => Math.max(a, b),
+          0
+        );
+
+        const imbalancedHighestWeakness =
+          highestWeakness > 0 &&
+          Object.keys(entry.typeMultipliers).some(
+            (key) =>
+              entry.typeMultipliers[key] > 1 &&
+              weaknessCounts[key] === highestWeakness
+          );
+
+        return imbalances > corrections || imbalancedHighestWeakness;
+      },
+      getEntries(entries, remainingEntriesToFind, result, goal, accept, balanced) {
+        if (entries.length >= goal) {
+          const score = this.getScore(entries);
+
+          if (!accept || accept(entries)) {
+            result.push({
+              entries,
+              score,
+            });
+          }
+        } else if (remainingEntriesToFind.length) {
+          remainingEntriesToFind.forEach((entry, i) => {
+            if (!balanced || !this.weaknessesUnbalanced(entries, entry))
+              this.getEntries(
+                [...entries, entry],
+                remainingEntriesToFind.slice(i + 1),
+                result,
+                goal,
+                accept,
+                balanced
+              );
+          });
+        }
+      },
+      getMoveTypeCoverages(moveTypes, index) {
+        const chosenTypes = moveTypes.filter((x) => x);
+
+        // If a type exists at the index, remove it, so we can rank the different options
+        if (chosenTypes.length > index) chosenTypes.splice(index, 1);
+
+        const scoredCombinations = this.getScoredMoveSetCombinations(
+          chosenTypes,
+          1
+        );
+
+        const result = scoredCombinations.map((x) => {
+          return {
+            type: x.combination.slice(-1)[0],
+            coverage: x.coverage,
+          };
+        });
+
+        return result;
+      },
+      getScoredMoveSetCombinations(chosenTypes, slots) {
+        const moveSetCombinations = [];
+
+        const buildCombinations = (types, count, output, combination = []) => {
+          if (!count) output.push(combination);
+          else
+            types.forEach((type, i) => {
+              if (count > 1)
+                buildCombinations(
+                  types.slice(i + 1),
+                  count - 1,
+                  output,
+                  combination.concat(type)
+                );
+              else output.push(combination.concat(type));
+            });
+        };
+
+        const evaluateCombination = (combination) => {
+          const coverageArray = this.typeScores.map((entry) => {
+            return combination
+              .map((type) => entry.typeMultipliers[type])
+              .reduce((a, b) => Math.max(a, b));
+          });
+
+          return coverageArray.reduce(
+            (acc, x, i) => {
+              if (x < 1) acc.resists.push(i);
+              else if (x > 1) acc.effective.push(i);
+              else acc.neutral.push(i);
+
+              return acc;
+            },
+            { resists: [], neutral: [], effective: [] }
+          );
+        };
+
+        const evaluateCombinations = (combinations) =>
+          combinations.map((combination) => {
+            return {
+              combination: combination,
+              coverage: evaluateCombination(combination),
+            };
+          });
+
+        buildCombinations(this.types, slots, moveSetCombinations, chosenTypes);
+
+        const scoredMoveSetCombinations =
+          evaluateCombinations(moveSetCombinations);
+
+        scoredMoveSetCombinations.sort((a, b) => {
+          if (a.coverage.resists.length !== b.coverage.resists.length)
+            return a.coverage.resists.length - b.coverage.resists.length;
+
+          if (a.coverage.effective.length !== b.coverage.effective.length)
+            return b.coverage.effective.length - a.coverage.effective.length;
+
+          return 0;
+        });
+
+        return scoredMoveSetCombinations;
+      },
+    },
+    computed: {
+      weaknesses() {
+        return {
+          normal: {
+            fighting: 2,
+            ghost: 0,
+          },
+          fire: {
+            fire: 0.5,
+            water: 2,
+            grass: 0.5,
+            ice: 0.5,
+            ground: 2,
+            bug: 0.5,
+            rock: 2,
+            steel: 0.5,
+            fairy: 0.5,
+          },
+          water: {
+            fire: 0.5,
+            water: 0.5,
+            electric: 2,
+            grass: 2,
+            ice: 0.5,
+            steel: 0.5,
+          },
+          electric: {
+            electric: 0.5,
+            ground: 2,
+            flying: 0.5,
+            steel: 0.5,
+          },
+          grass: {
+            fire: 2,
+            water: 0.5,
+            electric: 0.5,
+            grass: 0.5,
+            ice: 2,
+            poison: 2,
+            ground: 0.5,
+            flying: 2,
+            bug: 2,
+          },
+          ice: {
+            fire: 2,
+            ice: 0.5,
+            fighting: 2,
+            rock: 2,
+            steel: 2,
+          },
+          fighting: {
+            flying: 2,
+            psychic: 2,
+            bug: 0.5,
+            rock: 0.5,
+            dark: 0.5,
+            fairy: 2,
+          },
+          poison: {
+            grass: 0.5,
+            fighting: 0.5,
+            poison: 0.5,
+            ground: 2,
+            psychic: 2,
+            bug: 0.5,
+            fairy: 0.5,
+          },
+          ground: {
+            water: 2,
+            electric: 0,
+            grass: 2,
+            ice: 2,
+            poison: 0.5,
+            rock: 0.5,
+          },
+          flying: {
+            electric: 2,
+            grass: 0.5,
+            ice: 2,
+            fighting: 0.5,
+            ground: 0,
+            bug: 0.5,
+            rock: 2,
+          },
+          psychic: {
+            fighting: 0.5,
+            psychic: 0.5,
+            bug: 2,
+            ghost: 2,
+            dark: 2,
+          },
+          bug: {
+            fire: 2,
+            grass: 0.5,
+            fighting: 0.5,
+            ground: 0.5,
+            flying: 2,
+            rock: 2,
+          },
+          rock: {
+            normal: 0.5,
+            fire: 0.5,
+            water: 2,
+            grass: 2,
+            fighting: 2,
+            poison: 0.5,
+            ground: 2,
+            flying: 0.5,
+            steel: 2,
+          },
+          ghost: {
+            normal: 0,
+            fighting: 0,
+            poison: 0.5,
+            bug: 0.5,
+            ghost: 2,
+            dark: 2,
+          },
+          dragon: {
+            fire: 0.5,
+            water: 0.5,
+            electric: 0.5,
+            grass: 0.5,
+            ice: 2,
+            dragon: 2,
+            fairy: 2,
+          },
+          dark: {
+            fighting: 2,
+            psychic: 0,
+            bug: 2,
+            ghost: 0.5,
+            dark: 0.5,
+            fairy: 2,
+          },
+          steel: {
+            normal: 0.5,
+            fire: 2,
+            grass: 0.5,
+            ice: 0.5,
+            fighting: 2,
+            poison: 0,
+            ground: 2,
+            flying: 0.5,
+            psychic: 0.5,
+            bug: 0.5,
+            rock: 0.5,
+            dragon: 0.5,
+            steel: 0.5,
+            fairy: 0.5,
+          },
+          fairy: {
+            fighting: 0.5,
+            poison: 2,
+            bug: 0.5,
+            dragon: 0,
+            dark: 0.5,
+            steel: 2,
+          },
+        };
+      },
+      types() {
+        return Object.keys(this.weaknesses);
+      },
+      sortedTypes() {
+        return this.types.sort();
+      },
+      typeColors() {
+        return {
+          normal: "#aa9",
+          fire: "#f42",
+          water: "#39f",
+          electric: "#fc3",
+          grass: "#7c5",
+          ice: "#6cf",
+          fighting: "#b54",
+          poison: "#a59",
+          ground: "#db5",
+          flying: "#89f",
+          psychic: "#f59",
+          bug: "#ab2",
+          rock: "#ba6",
+          ghost: "#66b",
+          dragon: "#76e",
+          dark: "#754",
+          steel: "#aab",
+          fairy: "#e9e",
+        };
+      },
+      damageColors() {
+        return {
+          0: "#2e3436",
+          0.25: "#7c0000",
+          0.5: "#a40000",
+          2: "#4e9a06",
+          4: "#73d216",
+        };
+      },
+      unusedTypes() {
+        return [
+          ["normal", "ice"],
+          ["normal", "bug"],
+          ["normal", "rock"],
+          ["normal", "ghost"],
+          ["normal", "steel"],
+          ["fire", "fairy"],
+          ["ice", "poison"],
+          ["ground", "fairy"],
+          ["bug", "dragon"],
+          ["bug", "dark"],
+          ["rock", "ghost"],
+          // Not in Scarlet/Violet
+          ['poison', 'fairy'],
+          ['fire', 'steel'],
+          ['flying', 'fairy'],
+          ['dragon', 'steel'],
+          ['ground', 'flying']
+        ];
+      },
+      abilityImmunities() {
+        return {
+          levitate: { ground: 0 },
+          "volt-absorb": { electric: 0 },
+          "water-absorb": { water: 0 },
+          "flash-fire": { fire: 0 },
+          "thick-fat": { fire: 0.5, ice: 0.5 },
+          "storm-drain": { water: 0 },
+          'well-baked-body': { fire: 0 },
+          'purifying-salt': { ghost: 0.5 },
+          'earth-eater': { ground: 0 },
+          'sap-sipper': { grass: 0 }
+        };
+      },
+      typeScores() {
+        const scores = [];
+
+        for (
+          let primaryTypeIndex = 0;
+          primaryTypeIndex < this.types.length;
+          primaryTypeIndex++
+        ) {
+          for (
+            let secondaryTypeIndex = primaryTypeIndex;
+            secondaryTypeIndex < this.types.length;
+            secondaryTypeIndex++
+          ) {
+            const type = this.types[primaryTypeIndex];
+            const types = [type];
+
+            if (primaryTypeIndex !== secondaryTypeIndex) {
+              const secondaryType = this.types[secondaryTypeIndex];
+
+              // Filter out unused type combinations
+              if (
+                this.unusedTypes.some(
+                  (combination) =>
+                    combination.includes(type) &&
+                    combination.includes(secondaryType)
+                )
+              )
+                continue;
+
+              types.push(secondaryType);
+            }
+
+            scores.push(this.getTypeScoreEntry(types));
+          }
+        }
+
+        scores.sort((a, b) => a.score - b.score);
+
+        return scores;
+      },
+      async teamScores() {
+        let teamScores = await localforage.getItem("teamScores");
+
+        if (!teamScores) {
+          teamScores = this.getAllEntriesWithoutSharedWeaknesses(
+            this.validTypeScores,
+            6
+          );
+          localforage.setItem("teamScores", teamScores);
+        }
+
+        return teamScores;
+      },
+      validTypeScores() {
+        const invalidTypes = [
+          // Types that don't have any associated Pokemon
+          ["water", "steel"],
+          ["dragon", "fairy"],
+          ["normal", "water"],
+          ["psychic", "ghost"],
+
+          // Include Rotom and Wigglytuff because we never want to use them
+          ["electric", "ghost"],
+          ["normal", "fairy"],
+        ];
+
+        return this.typeScores.filter(
+          (entry) =>
+            !invalidTypes.some((combination) =>
+              this.arrayElementsMatch(combination, entry.types)
+            )
+        );
+      },
+      moveTypeCombination() {
+        const chosenTypes = this.moveTypes.filter((x) => x);
+
+        if (chosenTypes.length)
+          return this.getScoredMoveSetCombinations(chosenTypes, 0);
+      },
+    },
+    watch: {
+      moveTypes() {
+        const emptyMap = this.moveTypes.map((x) => !!x);
+
+        const firstEmptyIndex = emptyMap.indexOf(false);
+        const lastNonEmptyIndex = emptyMap.lastIndexOf(true);
+
+        // Ensure that empty entries are at the end
+        if (firstEmptyIndex !== -1 && firstEmptyIndex < lastNonEmptyIndex)
+          this.moveTypes.sort((a, b) => (a ? (b ? 0 : -1) : 1));
+      },
+    },
+    filters: {
+      shortName(name) {
+        return name.slice(0, 3);
+      },
+      asFraction(value) {
+        if (value == 0.5) return "½";
+        else if (value == 0.25) return "¼";
+
+        return value;
+      },
+    },
+  });
+
+  function spreadScore(entry) {
+    const resistanceCounts = Object.values(
+      entry.entries
+        .map((x) => x.typeMultipliers)
+        .reduce((acc, pokemon) => {
+          Object.entries(pokemon).forEach((entry) => {
+            if (!acc[entry[0]]) acc[entry[0]] = 0;
+            acc[entry[0]] += entry[1] < 1;
+          });
+
+          return acc;
+        }, {})
+    ).sort();
+
+    const weaknessCounts = Object.values(
+      entry.entries
+        .map((x) => x.typeMultipliers)
+        .reduce((acc, pokemon) => {
+          Object.entries(pokemon).forEach((entry) => {
+            if (!acc[entry[0]]) acc[entry[0]] = 0;
+            acc[entry[0]] += entry[1] > 1;
+          });
+
+          return acc;
+        }, {})
+    ).sort();
+
+    return (
+      resistanceCounts.reduce((a, b) => a + b) / resistanceCounts.length -
+      weaknessCounts.reduce((a, b) => a + b) / weaknessCounts.length
+    );
+  }
+
+  /*
+console.table((await app.getTeamScores(
+    [
+//         ['normal', 'flying'],
+//         ['poison', 'dark'],
+//         ['normal', 'psychic'],
+//         ['poison'],
+//         ['poison', 'fairy'],
+//         ['water', 'ghost'],
+//         ['ground', 'dragon'],
+//         ['ghost', 'dark'],
+//         ['steel', 'dragon'],
+//         ['water', 'electric'],
+//         ['fire', 'electric'],
+//         ['water', 'dragon'],
+    ],
+    [
+        ['normal', 'psychic'],
+        ['fighting', 'flying'],
+    ],
+    [
+//         'normal', 'electric', 'fighting', 'poison', 'ground', 'psychic', 'ghost', 'dragon'
+    ],
+//     true
+)).map(x => [...x.entries.map(x => x.types.join(',') + (x.ability ? `(${x.ability})` : '')), x.score]).slice(0, 20))
+    */
+
+  /*
+console.table(app.getBalancedTeam([
+    ['grass', 'fairy'],
+    ['water', 'dragon'],
+    ['psychic', 'normal'],
+], [
+//     ['ghost', 'dark'],
+//     ['ground', 'dragon'],
+//     ['ground', 'ghost'],
+//     ['poison', 'fairy'],
+//     ['poison'],
+//     ['normal', 'flying'],
+//     ['water', 'grass'],
+//     ['water', 'electric'],
+], 6).map(x => [...x.entries.map(x => x.types.join(',') + (x.ability ? `(${x.ability})` : '')), x.score]))
+    */
+
+  // https://web.archive.org/web/20201129062408/https://www.smogon.com/forums/threads/crown-tundra-sword-shield-bss-viability-rankings.3672698/
+  /*
+console.table(app.getBalancedTeam([
+    ['water', 'fairy'],
+    ['dragon', 'flying'],
+    ['electric', 'steel'],
+], null, 6, [
+    ['steel', 'flying'],
+    ['fire'],
+    ['ground', 'flying'],
+    ['ghost', 'fairy'],
+    ['water', 'fairy'],
+    ['ghost', 'dragon'],
+    ['ice'],
+    ['ground'],
+    ['poison', 'dragon'],
+    ['rock', 'poison'],
+    ['normal'],
+    { types: ['electric', 'flying'], ability: null},
+    ['dragon', 'flying'],
+    ['fire', 'steel'],
+    ['water', 'ice'],
+    ['dark', 'flying'],
+    ['bug', 'fighting'],
+    ['electric'],
+    ['grass'],
+    ['steel', 'grass'],
+    { types: ['steel', 'psychic'], ability: null },
+    ['water', 'electric'],
+    ['ground', 'water'],
+    ['water', 'fighting'],
+    ['fire', 'fighting'],
+    ['psychic'],
+    { types: ['ground', 'dragon'], ability: null },
+    ['water', 'flying'],
+    ['electric', 'steel'],
+    ['fire', 'electric'],
+    ['water'],
+    ['electric', 'fairy'],
+    ['psychic', 'fairy'],
+    ['electric', 'flying'],
+    ['fairy', 'flying'],
+    ['poison', 'water'],
+    ['dark', 'fighting'],
+]).map(x => [...x.entries.map(x => x.types.join(',') + (x.ability ? `(${x.ability})` : '')), x.score]))
+    */
+
+  /*
+console.table(app.getBalancedTeam([
+    { types: ['normal'], ability: 'thick-fat' },
+    { types: ['water', 'ground'], ability: 'storm-drain' },
+    ['steel', 'flying'],
+    ['fire'],
+], null, 6, [
+    ['psychic', 'fairy'],
+    ['flying', 'fairy'],
+    ['fighting', 'steel'],
+    ['fire', 'flying'],
+    ['water', 'flying'],
+    ['normal'],
+    ['water'],
+    { types: ['electric', 'flying'], ability: 'volt-absorb' },
+    { types: ['normal'], ability: 'thick-fat' },
+    ['fairy'],
+    { types: ['electric', 'fire'], ability: 'levitate' },
+    ['dark'],
+    ['steel', 'flying'],
+    ['fire'],
+    ['fire', 'dark'],
+    ['poison', 'psychic'],
+    ['electric'],
+    ['steel'],
+    ['ice'],
+    { types: ['poison', 'fairy'], ability: 'levitate' },
+    { types: ['electric', 'flying'], ability: null },
+    ['water', 'ice'],
+    ['dark', 'ice'],
+    ['psychic'],
+    ['rock'],
+    ['dark', 'ghost'],
+    ['ghost'],
+    ['grass', 'fairy'],
+    { types: ['dark', 'dragon'], ability: 'levitate' },
+    ['electric', 'ice'],
+    ['poison', 'dark'],
+    { types: ['dragon', 'psychic'], ability: 'levitate' },
+    ['water', 'ground'],
+    ['rock', 'fighting'],
+    ['fire', 'ghost'],
+    ['ghost', 'poison'],
+    ['grass', 'poison'],
+    ['fighting', 'flying'],
+    ['ghost', 'flying'],
+    ['bug', 'steel'],
+    ['dark', 'steel'],
+]).map(x => [...x.entries.map(x => x.types.join(',') + (x.ability ? `(${x.ability})` : '')), x.score]))
+    */
+
+  /*
+console.table(app.getBalancedTeam(null, null, 3, [
+    { types: ['normal'], ability: 'thick-fat' },
+    { types: ['water', 'ground'], ability: 'storm-drain' },
+    ['steel', 'flying'],
+    ['fire'],
+    { types: ['poison', 'fairy'], ability: 'levitate' },
+    { types: ['dragon', 'psychic'], ability: 'levitate' },
+]).map(x => [...x.entries.map(x => x.types.join(',') + (x.ability ? `(${x.ability})` : '')), x.score]))
+  */
+</script>
