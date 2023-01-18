@@ -62,6 +62,7 @@
                 <th></th>
                 <th>Pokemon</th>
                 <th>Typing</th>
+                <th>Tera</th>
                 <th>Ability</th>
                 <th>Style</th>
                 <th @click="sortBy = 'defensiveness'">
@@ -109,6 +110,24 @@
                             {{ type }}
                         </span>
                     </template>
+                </td>
+                <td>
+                    <span class="type" :style="{ background: getTypeColor(pokemon.tera.bestDef) }">
+                        {{ pokemon.tera.bestDef }}
+                        <template v-if="pokemon.tera.bestDef === pokemon.tera.bestOverall">
+                            *
+                        </template>
+                    </span>
+                    <span class="type" :style="{ background: getTypeColor(pokemon.tera.bestOff) }">
+                        {{ pokemon.tera.bestOff }}
+                        <template v-if="pokemon.tera.bestOff === pokemon.tera.bestOverall">
+                            *
+                        </template>
+                    </span>
+                    <span class="type" :style="{ background: getTypeColor(pokemon.tera.bestOverall) }"
+                        v-if="pokemon.tera.bestOverall !== pokemon.tera.bestDef && pokemon.tera.bestOverall !== pokemon.tera.bestOff">
+                        {{ pokemon.tera.bestOverall }}
+                    </span>
                 </td>
                 <td>
                     <select v-model="pokemon.selectedAbility" @change="abilityUpdated(pokemon)"
@@ -251,6 +270,34 @@
                 },
                 getTypeColor(type) {
                     return TYPE_COLORS[type.toLowerCase()];
+                },
+                getRecommendedTeraType(pokemon) {
+                    const types = pokemon.types.map(x => x.toLowerCase());
+
+                    let bestDef;
+                    let bestOff;
+                    let bestOverall;
+
+                    TYPES.map(x => x.name.toLowerCase()).forEach(type => {
+                        if (types.includes(type)) return;
+
+                        const def = getDefensiveScoreEntry([...types, type], this.typedDefensiveAbilities[pokemon.selectedAbility]);
+                        const off = getOffensiveScoreEntry([...types, type], this.possiblePokemonDefenses);
+                        const overall = { def, off, score: off.score - def.score, type };
+
+                        if (!bestDef || def.score < bestDef.score) bestDef = def;
+
+                        if (!bestOff || off.score > bestOff.score) bestOff = off;
+
+                        if (!bestOverall || overall.score > bestOverall.score) bestOverall = overall;
+                    });
+
+                    return {
+                        bestDef: bestDef.types.slice(-1)[0],
+                        bestOff: bestOff.types.slice(-1)[0],
+                        bestOverall: bestOverall.type,
+                        ability: pokemon.selectedAbility
+                    };
                 }
             },
             computed: {
@@ -302,6 +349,7 @@
                         if (!pokemon.selectedAbility) {
                             defensiveness = pokemon.abilities.reduce((best, ability) => {
                                 const check = getDefensiveScoreEntry(pokemon.types.map(x => x.toLowerCase()), this.typedDefensiveAbilities[ability]);
+                                check.ability = ability;
 
                                 if (!best || check.score < best.score)
                                     return check;
@@ -320,6 +368,9 @@
                         pokemon.defensiveness = defensiveness;
                         pokemon.offensiveness = offensiveness;
 
+                        if (!pokemon.tera || pokemon.tera.ability !== pokemon.selectedAbility)
+                            pokemon.tera = this.getRecommendedTeraType(pokemon);
+
                         return pokemon;
                     }).sort((a, b) => a.defensiveness.score - b.defensiveness.score);
                 },
@@ -334,10 +385,12 @@
                     }).sort((a, b) => (b.alreadyOnTeam - a.alreadyOnTeam) || this.compare(a, b, this.sortBy));
                 },
                 typedDefensiveAbilities() {
+                    const keyWords = ['halved', 'immun', '1.25x', '1/4', '3/4', '2x'];
+                    const ignored = ['Sandstorm', 'Status moves'];
+
                     return ABILITIES
-                        .filter(x => (x.description.includes('halved') || x.description.includes('immun') || x.description.includes('1.25x') || x.description.includes('1/4') || x.description.includes('3/4')) &&
-                            !x.description.includes('Sandstorm') &&
-                            !x.description.includes('Status moves')
+                        .filter(x => keyWords.some(word => x.description.includes(word)) &&
+                            !ignored.some(i => x.description.includes(i))
                         )
                         .map(x => ({ ...x, defensiveness: getDefensiveness(x.description) }))
                         .filter(x => Object.keys(x.defensiveness).length)
@@ -422,6 +475,9 @@
 
                 else if (description.includes(`is hurt 1.25x by ${typeName}`))
                     result[typeName] = 1.25;
+
+                else if (description.includes(`2x damage from ${typeName}`))
+                    result[typeName] = 2;
 
                 else if (description.includes(typeName.toLowerCase()))
                     result[typeName] = modifier;
