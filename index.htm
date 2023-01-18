@@ -1,0 +1,436 @@
+<head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="main.css" />
+
+    <style>
+        .entry {
+            border: 1px solid #aaa;
+            padding: 8px;
+            margin: 4px 2px;
+        }
+
+        select:disabled {
+            opacity: 1;
+            border: none;
+            color: inherit;
+            appearance: none;
+            background: none;
+            font-size: inherit;
+            user-select: text;
+        }
+
+        pre {
+            max-height: 250px;
+            overflow: scroll;
+            width: 100%;
+            background: #eee;
+            padding: 8px;
+            margin: 4px;
+            background: #333;
+            color: #f5f5f5;
+            box-shadow: 0 2px 4px rgb(0 0 0 / 60%) inset;
+        }
+
+        #graph {
+            overflow: hidden;
+            width: 100%;
+            margin: 4px;
+        }
+
+        body {
+            background: #222;
+        }
+
+        .type {
+            margin: 6px;
+            margin-left: 0;
+            text-transform: capitalize;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app" style="display: none">
+        <div style="display: flex; align-items: stretch;" v-if="team.length">
+            <pre>{{ teamScore.defensiveness }}</pre>
+            <div id="graph" v-if="teamGraph?.edges.length"></div>
+            <pre>{{ teamScore.offensiveness }}</pre>
+        </div>
+
+        <table style="width: 100%; border-collapse: collapse; color: #f5f5f5;">
+            <tr style="text-align: left;">
+                <th></th>
+                <th>Pokemon</th>
+                <th>Typing</th>
+                <th>Ability</th>
+                <th>Style</th>
+                <th @click="sortBy = 'defensiveness'">
+                    Def. Score
+                    <template v-if="sortBy === 'defensiveness'">↓</template>
+                </th>
+                <th @click="sortBy = 'offensiveness'">
+                    Off. Score
+                    <template v-if="sortBy === 'offensiveness'">↓</template>
+                </th>
+                <th @click="sortBy = 'totalScore'">
+                    Overall Score
+                    <template v-if="sortBy === 'totalScore'">↓</template>
+                </th>
+                <th @click="sortBy = 'duplicateWeaknesses'">
+                    Shared Weaknesses
+                    <template v-if="sortBy === 'duplicateWeaknesses'">↓</template>
+                </th>
+            </tr>
+            <tr v-for="{ pokemon, defensiveness, offensiveness, duplicateWeaknesses, alreadyOnTeam } in relativelyScoredPokemon"
+                class="entry"
+                :style="{ background: alreadyOnTeam ? '#07a' : !duplicateWeaknesses && team.length ? '#0a0' : null }">
+                <td>
+                    <button @click="addToTeam(pokemon)" v-if="!team.includes(pokemon)" :disabled="team.length >= 6"
+                        style="width: 32px; height: 32px; font-size: 24px;">
+                        +
+                    </button>
+                    <button @click="removeFromTeam(pokemon)" v-if="team.includes(pokemon)"
+                        style="width: 32px; height: 32px; font-size: 24px;">
+                        -
+                    </button>
+                </td>
+                <td>{{ pokemon.name }}</td>
+                <td>
+                    <template v-if="pokemon.types.length > 1">
+                        <span class="type offensive">
+                            <span v-for="type in pokemon.types" class="dual"
+                                :style="{ background: getTypeColor(type) }">
+                                {{ type }}
+                            </span>
+                        </span>
+                    </template>
+                    <template v-else>
+                        <span v-for="type in pokemon.types" class="type" :style="{ background: getTypeColor(type) }">
+                            {{ type }}
+                        </span>
+                    </template>
+                </td>
+                <td>
+                    <select v-model="pokemon.selectedAbility" @change="abilityUpdated(pokemon)"
+                        :disabled="pokemon.abilities.length <= 1" style="width: 132px; padding: 2px;">
+                        <option v-for="ability in pokemon.abilities">{{ ability }}</option>
+                    </select>
+                </td>
+                <td>{{ getAttackStyle(pokemon) }}
+                </td>
+                <td>{{ defensiveness?.score.toFixed(1) }}</td>
+                <td>{{ offensiveness?.score.toFixed(1) }}</td>
+                <td>{{ offensiveness && defensiveness ? (offensiveness.score - defensiveness.score).toFixed(1) : null }}
+                </td>
+                <td>{{ duplicateWeaknesses }}</td>
+            </tr>
+        </table>
+    </div>
+
+    <script src="lib/vue.js"></script>
+    <script src="lib/anychart-core.min.js"></script>
+    <script src="lib/anychart-graph.min.js"></script>
+
+    <script type="module">
+        import { ABILITIES, TYPES, POKEMON } from './dump.js';
+        import { getDefensiveScoreEntry, getOffensiveScoreEntry, getOffensiveScore, multiply, max, noSharedWeaknesses, TYPE_COLORS } from './shared.js';
+
+        const app = new Vue({
+            el: "#app",
+            created() {
+                document.getElementById("app").style.display = null;
+            },
+            data: {
+                team: [],
+                usablePokemon: POKEMON.filter(x => {
+                    let minLength = 1;
+
+                    const ignoredFormats = ['National Dex', 'LC', 'NFE', 'CAP'];
+
+                    ignoredFormats.forEach(format => {
+                        if (x.formats.includes(format)) minLength++;
+                    });
+
+                    return x.formats.length >= minLength;
+                }),
+                sortBy: 'defensiveness',
+                chart: null
+            },
+            methods: {
+                addToTeam(pokemon) {
+                    this.team.push(pokemon);
+                },
+                removeFromTeam(pokemon) {
+                    this.team = this.team.filter(x => x !== pokemon);
+                },
+                abilityUpdated(pokemon) {
+                    this.usablePokemon = this.usablePokemon.slice();
+                    setTimeout(() => {
+                        this.team = this.team.slice();
+                    });
+                },
+                getTeamDefensiveness(team) {
+                    if (!team.length)
+                        return null;
+
+                    let duplicateWeaknesses = {};
+                    let typeMultipliers = null;
+
+                    team.forEach(pokemon => {
+                        Object.keys(pokemon.defensiveness.typeMultipliers).forEach(type => {
+                            if (pokemon.defensiveness.typeMultipliers[type] > 1) {
+                                if (!duplicateWeaknesses[type])
+                                    duplicateWeaknesses[type] = 1;
+                                else
+                                    duplicateWeaknesses[type]++;
+                            }
+                        });
+
+                        if (!typeMultipliers) {
+                            typeMultipliers = pokemon.defensiveness.typeMultipliers;
+                        }
+                        else {
+                            typeMultipliers = multiply(typeMultipliers, pokemon.defensiveness.typeMultipliers);
+                        }
+                    });
+
+                    Object.keys(duplicateWeaknesses).forEach(type => {
+                        if (duplicateWeaknesses[type] <= 1)
+                            delete duplicateWeaknesses[type];
+                    });
+
+                    const score = Object.values(typeMultipliers).reduce((a, b) => a + b);
+
+                    return { score, duplicateWeaknesses, typeMultipliers };
+                },
+                getTeamOffensiveness(team) {
+                    if (!team.length)
+                        return null;
+
+                    let typeMultipliers = null;
+
+                    team.forEach(pokemon => {
+                        if (!typeMultipliers) {
+                            typeMultipliers = pokemon.offensiveness.typeMultipliers;
+                        }
+                        else {
+                            typeMultipliers = max(typeMultipliers, pokemon.offensiveness.typeMultipliers);
+                        }
+                    });
+
+                    const score = getOffensiveScore(typeMultipliers, true);
+
+                    return { score: score.score, coverages: score.coverages, typeMultipliers };
+                },
+                compare(a, b, sortBy) {
+                    if (sortBy === 'defensiveness')
+                        return a.defensiveness.score - b.defensiveness.score;
+                    else if (sortBy === 'offensiveness')
+                        return b.offensiveness.score - a.offensiveness.score;
+                    else if (sortBy === 'duplicateWeaknesses')
+                        return a.duplicateWeaknesses - b.duplicateWeaknesses;
+                    else if (sortBy === 'totalScore')
+                        return (b.offensiveness.score - b.defensiveness.score) - (a.offensiveness.score - a.defensiveness.score);
+                },
+                getAttackStyle(pokemon) {
+                    const abilityTypes = {
+                        'Huge Power': 'Physical',
+                        'Pure Power': 'Physical'
+                    };
+
+                    if (abilityTypes[pokemon.selectedAbility])
+                        return abilityTypes[pokemon.selectedAbility];
+
+                    if (pokemon.atk > pokemon.spa * 1.1)
+                        return 'Physical'
+
+                    if (pokemon.spa > pokemon.atk * 1.1)
+                        return 'Special';
+
+                    return 'Mixed';
+                },
+                getTypeColor(type) {
+                    return TYPE_COLORS[type.toLowerCase()];
+                }
+            },
+            computed: {
+                teamScore() {
+                    return { defensiveness: this.getTeamDefensiveness(this.team), offensiveness: this.getTeamOffensiveness(this.team) };
+                },
+                teamGraph() {
+                    if (!this.team.length) return;
+
+                    const graph = {
+                        nodes: this.team.map(x => ({ id: x.name, group: x.types.sort().join(',').toLowerCase() })),
+                        edges: []
+                    };
+
+                    for (let i = 0; i < this.team.length; i++) {
+                        const pokemonA = this.team[i];
+
+                        for (let j = i + 1; j < this.team.length; j++) {
+                            const pokemonB = this.team[j];
+
+                            if (noSharedWeaknesses(pokemonA.defensiveness, [pokemonB.defensiveness]))
+                                graph.edges.push({ from: pokemonA.name, to: pokemonB.name });
+                        }
+                    }
+
+                    return graph;
+                },
+                possiblePokemonDefenses() {
+                    const result = {};
+
+                    this.usablePokemon.forEach(pokemon => {
+                        pokemon.abilities.forEach(ability => {
+                            const defensiveness = getDefensiveScoreEntry(pokemon.types.map(x => x.toLowerCase()), this.typedDefensiveAbilities[ability]);
+
+                            if (defensiveness.ability && pokemon.abilities.length > 1)
+                                result[`${pokemon.name} (${ability})`] = defensiveness;
+                            else
+                                result[pokemon.name] = defensiveness;
+                        });
+                    });
+
+                    return result;
+                },
+                scoredPokemon() {
+                    return this.usablePokemon.map(pokemon => {
+                        let defensiveness;
+                        let offensiveness;
+
+                        if (!pokemon.selectedAbility) {
+                            defensiveness = pokemon.abilities.reduce((best, ability) => {
+                                const check = getDefensiveScoreEntry(pokemon.types.map(x => x.toLowerCase()), this.typedDefensiveAbilities[ability]);
+
+                                if (!best || check.score < best.score)
+                                    return check;
+
+                                return best;
+                            }, null);
+
+                            pokemon.selectedAbility = pokemon.selectedAbility || defensiveness?.ability || pokemon.abilities[0];
+                        }
+                        else {
+                            defensiveness = getDefensiveScoreEntry(pokemon.types.map(x => x.toLowerCase()), this.typedDefensiveAbilities[pokemon.selectedAbility]);
+                        }
+
+                        offensiveness = getOffensiveScoreEntry(pokemon.types.map(x => x.toLowerCase()), this.possiblePokemonDefenses);
+
+                        pokemon.defensiveness = defensiveness;
+                        pokemon.offensiveness = offensiveness;
+
+                        return pokemon;
+                    }).sort((a, b) => a.defensiveness.score - b.defensiveness.score);
+                },
+                relativelyScoredPokemon() {
+                    return this.scoredPokemon.map(pokemon => {
+                        const alreadyOnTeam = this.team.includes(pokemon);
+
+                        const defensiveness = !alreadyOnTeam ? this.getTeamDefensiveness([...this.team, pokemon]) : this.getTeamDefensiveness(this.team.filter(x => x !== pokemon));
+                        const offensiveness = !alreadyOnTeam ? this.getTeamOffensiveness([...this.team, pokemon]) : this.getTeamOffensiveness(this.team.filter(x => x !== pokemon));
+
+                        return { pokemon, defensiveness, offensiveness, alreadyOnTeam, duplicateWeaknesses: defensiveness ? Object.values(defensiveness.duplicateWeaknesses).reduce((acc, x) => acc + x - 1, 0) : 0 };
+                    }).sort((a, b) => (b.alreadyOnTeam - a.alreadyOnTeam) || this.compare(a, b, this.sortBy));
+                },
+                typedDefensiveAbilities() {
+                    return ABILITIES
+                        .filter(x => (x.description.includes('halved') || x.description.includes('immun') || x.description.includes('1.25x') || x.description.includes('1/4') || x.description.includes('3/4')) &&
+                            !x.description.includes('Sandstorm') &&
+                            !x.description.includes('Status moves')
+                        )
+                        .map(x => ({ ...x, defensiveness: getDefensiveness(x.description) }))
+                        .filter(x => Object.keys(x.defensiveness).length)
+                        .reduce((acc, x) => (acc[x.name] = x, acc), {});
+                }
+            },
+            filters: {
+                shortName(name) {
+                    return name.slice(0, 3);
+                },
+                abilityName(ability) {
+                    return ability.split('-').map(x => x[0].toUpperCase() + x.slice(1)).join(' ').replace('Well Baked', 'Well-Baked');
+                },
+                asFraction(value) {
+                    if (value == 0.5) return "½";
+                    else if (value == 0.25) return "¼";
+
+                    return value;
+                },
+            },
+            watch: {
+                team() {
+                    if (this.teamGraph?.edges.length) {
+                        setTimeout(() => {
+                            if (!this.chart) {
+                                this.chart = anychart.graph(this.teamGraph);
+                                this.chart.background().fill({ keys: ['#222'] });
+
+                                this.chart.nodes().labels().enabled(true);
+                                this.chart.nodes().labels().format("{%id}");
+                                this.chart.nodes().labels().fontSize(12);
+                                this.chart.nodes().labels().fontColor('#f5f5f5');
+                                this.chart.nodes().labels().fontWeight(600);
+                            }
+                            else {
+                                this.chart.data(this.teamGraph);
+                            }
+
+                            const sortedTypes = Object.keys(TYPE_COLORS).sort();
+
+                            for (let i = 0; i < sortedTypes.length; i++) {
+                                const typeA = sortedTypes[i];
+                                for (let j = i; j < sortedTypes.length; j++) {
+                                    const keys = [TYPE_COLORS[typeA]];
+                                    let typeCombo = typeA;
+
+                                    const typeB = sortedTypes[j];
+
+                                    if (typeA !== typeB) {
+                                        keys.push(TYPE_COLORS[typeB]);
+                                        typeCombo += `,${typeB}`;
+                                    }
+
+                                    const group = this.chart.group(typeCombo);
+
+                                    console.log(typeCombo, group);
+
+                                    if (group)
+                                        group.fill({ keys });
+                                }
+                            }
+
+                            this.chart.container("graph").draw();
+                        }, 0);
+                    }
+                }
+            }
+        });
+
+        function getDefensiveness(description) {
+            description = description.toLowerCase();
+
+            const result = {};
+
+            const modifier = description.includes('immun') ? 0 : description.includes('halved') ? 0.5 : 1;
+
+            TYPES.map(type => type.name).forEach(typeName => {
+                typeName = typeName.toLowerCase();
+
+                if (description.includes(`is healed 1/4 by ${typeName}`))
+                    result[typeName] = 0;
+
+                else if (description.includes(`is hurt 1.25x by ${typeName}`))
+                    result[typeName] = 1.25;
+
+                else if (description.includes(typeName.toLowerCase()))
+                    result[typeName] = modifier;
+            });
+
+            if (description.includes('3/4 damage from supereffective'))
+                result['super-effective'] = 0.75;
+
+            return result;
+        }
+    </script>
+</body>

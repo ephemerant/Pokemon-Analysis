@@ -7,7 +7,7 @@
 - And more, probably
 
 ## To-Do:
-- Make app accessible via GitHub pages
+- Update Type Chart to include options for "include available abilities" and "include all availabilities"
 - Node graph of a team, showing members that best pair with each other, e.g. ![image](https://user-images.githubusercontent.com/9091188/212985058-27f9b049-aff8-43bd-a037-52f94e7a1084.png)
 - UI for existing team-building analysis/exploration code
 - Ability to save/load teams in UI
