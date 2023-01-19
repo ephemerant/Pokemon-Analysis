@@ -86,7 +86,8 @@
                 class="entry"
                 :style="{ background: alreadyOnTeam ? '#07a' : !duplicateWeaknesses && team.length ? '#0a0' : null }">
                 <td>
-                    <button @click="addToTeam(pokemon)" v-if="!team.includes(pokemon)" :disabled="team.length >= 6"
+                    <button @click="addToTeam(pokemon)" v-if="!team.includes(pokemon)"
+                        :disabled="team.length >= 6 || teamHasAlternateForm(pokemon)"
                         style="width: 32px; height: 32px; font-size: 24px;">
                         +
                     </button>
@@ -162,6 +163,9 @@
             data: {
                 team: [],
                 usablePokemon: POKEMON.filter(x => {
+                    if (!x?.oob?.dex_number)
+                        return false;
+
                     let minLength = 1;
 
                     const ignoredFormats = ['National Dex', 'LC', 'NFE', 'CAP'];
@@ -298,6 +302,9 @@
                         bestOverall: bestOverall.type,
                         ability: pokemon.selectedAbility
                     };
+                },
+                teamHasAlternateForm(pokemon) {
+                    return this.team.some(x => x.oob.dex_number === pokemon.oob.dex_number);
                 }
             },
             computed: {
@@ -445,8 +452,6 @@
                                     }
 
                                     const group = this.chart.group(typeCombo);
-
-                                    console.log(typeCombo, group);
 
                                     if (group)
                                         group.fill({ keys });
