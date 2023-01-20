@@ -32,9 +32,7 @@
         }
 
         #graph {
-            overflow: hidden;
             width: 100%;
-            margin: 4px;
         }
 
         body {
@@ -45,6 +43,21 @@
             margin: 6px;
             margin-left: 0;
             text-transform: capitalize;
+        }
+
+        .pokemon-icon {
+            width: 40px;
+            height: 30px;
+            display: inline-block;
+            vertical-align: middle;
+            background-image: url('/lib/pokemonicons-sheet.png');
+            background-repeat: no-repeat;
+            background-attachment: scroll;
+            background-color: transparent;
+        }
+
+        #graph svg+div {
+            display: none;
         }
     </style>
 </head>
@@ -65,15 +78,15 @@
                 <th>Tera</th>
                 <th>Ability</th>
                 <th>Style</th>
-                <th @click="sortBy = 'defensiveness'">
+                <th @click="sortBy = 'defensiveness'" title="Lower is better">
                     Def. Score
                     <template v-if="sortBy === 'defensiveness'">↓</template>
                 </th>
-                <th @click="sortBy = 'offensiveness'">
+                <th @click="sortBy = 'offensiveness'" title="Higher is better">
                     Off. Score
                     <template v-if="sortBy === 'offensiveness'">↓</template>
                 </th>
-                <th @click="sortBy = 'totalScore'">
+                <th @click="sortBy = 'totalScore'" title="Off. Score - Def.Score, so higher is better">
                     Overall Score
                     <template v-if="sortBy === 'totalScore'">↓</template>
                 </th>
@@ -96,7 +109,11 @@
                         -
                     </button>
                 </td>
-                <td>{{ pokemon.name }}</td>
+                <td>
+                    <span class="pokemon-icon"
+                        :style="{ 'background-position-x': sheetLocations[pokemon.name].x + 'px', 'background-position-y': sheetLocations[pokemon.name].y + 'px' }"></span>
+                    {{ pokemon.name }}
+                </td>
                 <td>
                     <template v-if="pokemon.types.length > 1">
                         <span class="type offensive">
@@ -152,7 +169,7 @@
     <script src="lib/anychart-graph.min.js"></script>
 
     <script type="module">
-        import { ABILITIES, TYPES, POKEMON } from './dump.js';
+        import { ABILITIES, TYPES, POKEMON, CUSTOM_ICON_NUMBERS } from './dump.js';
         import { getDefensiveScoreEntry, getOffensiveScoreEntry, getOffensiveScore, multiply, max, noSharedWeaknesses, TYPE_COLORS } from './shared.js';
 
         const app = new Vue({
@@ -305,6 +322,27 @@
                 },
                 teamHasAlternateForm(pokemon) {
                     return this.team.some(x => x.oob.dex_number === pokemon.oob.dex_number);
+                },
+                getDataUrl(pokemon) {
+                    const { x, y } = this.sheetLocations[pokemon.name];
+
+                    const img = new Image();
+                    img.src = '/lib/pokemonicons-sheet.png';
+
+                    const width = 40;
+                    const height = 30;
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = Math.max(width, height);
+                    canvas.height = canvas.width;
+
+                    const dx = (canvas.width - width) / 2;
+                    const dy = (canvas.height - height) / 2;
+
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, -x, -y, width, height, dx, dy, width, height);
+
+                    return canvas.toDataURL();
                 }
             },
             computed: {
@@ -315,7 +353,10 @@
                     if (!this.team.length) return;
 
                     const graph = {
-                        nodes: this.team.map(x => ({ id: x.name, group: x.types.sort().join(',').toLowerCase() })),
+                        nodes: this.team.map(x => ({
+                            id: x.name,
+                            fill: { src: this.getDataUrl(x) }
+                        })),
                         edges: []
                     };
 
@@ -402,6 +443,30 @@
                         .map(x => ({ ...x, defensiveness: getDefensiveness(x.description) }))
                         .filter(x => Object.keys(x.defensiveness).length)
                         .reduce((acc, x) => (acc[x.name] = x, acc), {});
+                },
+                sheetLocations() {
+                    const result = {};
+                    const cols = 12;
+
+                    const width = 40;
+                    const height = 30;
+
+                    POKEMON.forEach(pokemon => {
+                        const customDexNumber = CUSTOM_ICON_NUMBERS[pokemon.name.replace(/[^A-z]/g, '').toLowerCase()];
+                        const dexNumber = customDexNumber || pokemon?.oob?.dex_number;
+
+                        if (!dexNumber || result[pokemon.name]) return;
+
+                        let y = -Math.floor(dexNumber / cols);
+                        let x = -dexNumber - y * cols;
+
+                        y *= height;
+                        x *= width;
+
+                        result[pokemon.name] = { x, y };
+                    });
+
+                    return result;
                 }
             },
             filters: {
@@ -419,46 +484,28 @@
                 },
             },
             watch: {
-                team() {
+                teamGraph() {
                     if (this.teamGraph?.edges.length) {
                         setTimeout(() => {
-                            if (!this.chart) {
-                                this.chart = anychart.graph(this.teamGraph);
-                                this.chart.background().fill({ keys: ['#222'] });
+                            if (this.chart)
+                                this.chart.dispose();
 
-                                this.chart.nodes().labels().enabled(true);
-                                this.chart.nodes().labels().format("{%id}");
-                                this.chart.nodes().labels().fontSize(12);
-                                this.chart.nodes().labels().fontColor('#f5f5f5');
-                                this.chart.nodes().labels().fontWeight(600);
-                            }
-                            else {
-                                this.chart.data(this.teamGraph);
-                            }
+                            this.chart = anychart.graph(this.teamGraph);
+                            this.chart.background().fill({ keys: ['transparent'] });
+                            this.chart.padding().bottom(24);
 
-                            const sortedTypes = Object.keys(TYPE_COLORS).sort();
+                            this.chart.nodes().labels().enabled(true);
+                            this.chart.nodes().labels().format("{%id}");
+                            this.chart.nodes().labels().fontSize(12);
+                            this.chart.nodes().labels().fontColor('#f5f5f5');
+                            this.chart.nodes().labels().fontWeight(600);
 
-                            for (let i = 0; i < sortedTypes.length; i++) {
-                                const typeA = sortedTypes[i];
-                                for (let j = i; j < sortedTypes.length; j++) {
-                                    const keys = [TYPE_COLORS[typeA]];
-                                    let typeCombo = typeA;
-
-                                    const typeB = sortedTypes[j];
-
-                                    if (typeA !== typeB) {
-                                        keys.push(TYPE_COLORS[typeB]);
-                                        typeCombo += `,${typeB}`;
-                                    }
-
-                                    const group = this.chart.group(typeCombo);
-
-                                    if (group)
-                                        group.fill({ keys });
-                                }
-                            }
+                            this.chart.nodes().stroke(null);
+                            this.chart.nodes().height(40);
 
                             this.chart.container("graph").draw();
+
+                            [...document.getElementsByTagName('clipPath')].forEach(x => x.remove());
                         }, 0);
                     }
                 }
