@@ -493,6 +493,7 @@
                             this.chart = anychart.graph(this.teamGraph);
                             this.chart.background().fill({ keys: ['transparent'] });
                             this.chart.padding().bottom(24);
+                            this.chart.rotation(45);
 
                             this.chart.nodes().labels().enabled(true);
                             this.chart.nodes().labels().format("{%id}");
