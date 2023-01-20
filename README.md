@@ -9,7 +9,7 @@
 - And more, probably
 
 ## To-Do:
-- Update Type Chart to include options for "include available abilities" and "include all availabilities"
+- Update Type Chart to include options for "include available abilities" and "include all abilities"
 - Ability to save/load teams in UI
 - Adverserial analysis, i.e. given opponent's team's types/abilities, determine:
   - Their offensiveness to your team
