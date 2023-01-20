@@ -1,5 +1,5 @@
 # Pokemon Analysis
-![image](https://user-images.githubusercontent.com/9091188/213258086-b64f840c-6ba0-4bd2-8fe0-78bf23d82b79.png)
+![image](https://user-images.githubusercontent.com/9091188/213594952-852af2eb-0339-4fc3-82f2-4949833f5154.png)
  
 ## Features:
 - Move type coverage recommendations
