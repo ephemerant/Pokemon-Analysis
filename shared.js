@@ -58,26 +58,39 @@ export function getTypeScoreEntry(types, ability) {
   };
 }
 
-export function getDefensiveScoreEntry(types, ability) {
+export function getDefensiveScoreEntry(
+  types,
+  defAbility,
+  offAbility,
+  applyOffAbilityAtEnd
+) {
   let typeMultipliers = null;
 
   types.forEach(
     (type) =>
       (typeMultipliers = typeMultipliers
-        ? multiply(typeMultipliers, getTypeWeaknesses(type))
-        : getTypeWeaknesses(type))
+        ? multiply(
+            typeMultipliers,
+            getTypeWeaknesses(type, applyOffAbilityAtEnd ? null : offAbility)
+          )
+        : getTypeWeaknesses(type, applyOffAbilityAtEnd ? null : offAbility))
   );
 
-  if (ability?.defensiveness) {
-    let defensiveness = ability.defensiveness;
+  if (applyOffAbilityAtEnd) 
+    typeMultipliers = offAbility(typeMultipliers);
 
-    if (defensiveness['super-effective']) {
-        defensiveness = Object.entries(typeMultipliers).reduce((acc, [key, value]) => {
-            if (value > 1)
-                acc[key] = defensiveness['super-effective'];
+  if (defAbility?.defensiveness) {
+    let defensiveness = defAbility.defensiveness;
 
-            return acc;
-        }, {});
+    if (defensiveness["super-effective"]) {
+      defensiveness = Object.entries(typeMultipliers).reduce(
+        (acc, [key, value]) => {
+          if (value > 1) acc[key] = defensiveness["super-effective"];
+
+          return acc;
+        },
+        {}
+      );
     }
 
     typeMultipliers = multiply(typeMultipliers, defensiveness);
@@ -89,21 +102,38 @@ export function getDefensiveScoreEntry(types, ability) {
     types,
     typeMultipliers,
     score,
-    ability: ability?.name,
+    ability: defAbility?.name,
+    recalculate(offAbility) {
+      return offAbility?.applies && types.some((type) => offAbility.applies(type))
+        ? getDefensiveScoreEntry(
+            types,
+            defAbility,
+            offAbility.calculate,
+            offAbility.applyAtEnd
+          )
+        : this;
+    },
   };
 }
 
-export function getOffensiveScoreEntry(types, possiblePokemonDefenses) {
+export function getOffensiveScoreEntry(
+  types,
+  possiblePokemonDefenses,
+  offAbility
+) {
   let pokemonMultipliers = null;
+
+  if (offAbility?.addOffensiveType)
+    types = offAbility.addOffensiveType(types);
 
   types.forEach(
     (type) =>
       (pokemonMultipliers = pokemonMultipliers
         ? max(
             pokemonMultipliers,
-            getPokemonCoverage(type, possiblePokemonDefenses)
+            getPokemonCoverage(type, possiblePokemonDefenses, offAbility)
           )
-        : getPokemonCoverage(type, possiblePokemonDefenses))
+        : getPokemonCoverage(type, possiblePokemonDefenses, offAbility))
   );
 
   const score = getOffensiveScore(pokemonMultipliers);
@@ -148,20 +178,29 @@ export function getOffensiveScore(typeMultipliers, full = false) {
   return score;
 }
 
-export function getTypeWeaknesses(defensiveType) {
-  return TYPES.reduce((acc, attackType) => {
+export function getTypeWeaknesses(defensiveType, offAbility) {
+  let res = TYPES.reduce((acc, attackType) => {
     acc[attackType] =
       WEAKNESSES[defensiveType][attackType] === undefined
         ? 1
         : WEAKNESSES[defensiveType][attackType];
     return acc;
   }, {});
+
+  if (offAbility) res = offAbility(res);
+
+  return res;
 }
 
-export function getPokemonCoverage(attackType, possiblePokemonDefenses) {
+export function getPokemonCoverage(
+  attackType,
+  possiblePokemonDefenses,
+  offAbility
+) {
   return Object.entries(possiblePokemonDefenses).reduce(
-    (acc, [name, pokemon]) => {
-      acc[name] = pokemon.typeMultipliers[attackType];
+    (acc, [name, defensiveness]) => {
+      acc[name] =
+        defensiveness.recalculate(offAbility).typeMultipliers[attackType];
       return acc;
     },
     {}
@@ -493,15 +532,15 @@ export const DAMAGE_COLORS = {
 };
 
 export function noSharedWeaknesses(entry, entries) {
-    for (const existingEntry of entries) {
-        for (const type of TYPES) {
-            if (
-                entry.typeMultipliers[type] > 1 &&
-                existingEntry.typeMultipliers[type] > 1
-            )
-                return false;
-        }
+  for (const existingEntry of entries) {
+    for (const type of TYPES) {
+      if (
+        entry.typeMultipliers[type] > 1 &&
+        existingEntry.typeMultipliers[type] > 1
+      )
+        return false;
     }
+  }
 
-    return true;
+  return true;
 }

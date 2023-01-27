@@ -405,13 +405,29 @@
                                 return best;
                             }, null);
 
-                            pokemon.selectedAbility = pokemon.selectedAbility || defensiveness?.ability || pokemon.abilities[0];
-                        }
-                        else {
-                            defensiveness = getDefensiveScoreEntry(pokemon.types.map(x => x.toLowerCase()), this.typedDefensiveAbilities[pokemon.selectedAbility]);
+                            if (this.typedDefensiveAbilities[defensiveness.ability]) {
+                                pokemon.selectedAbility = defensiveness.ability;
+                            }
+                            else {
+                                offensiveness = pokemon.abilities.reduce((best, ability) => {
+                                    const check = getOffensiveScoreEntry(pokemon.types.map(x => x.toLowerCase()), this.possiblePokemonDefenses, this.typedOffensiveAbilities[ability]);
+                                    check.ability = ability;
+
+                                    if (!best || check.score > best.score)
+                                        return check;
+
+                                    return best;
+                                }, null);
+
+                                pokemon.selectedAbility = offensiveness?.ability || pokemon.abilities[0];
+                            }
                         }
 
-                        offensiveness = getOffensiveScoreEntry(pokemon.types.map(x => x.toLowerCase()), this.possiblePokemonDefenses);
+                        if (!defensiveness)
+                            defensiveness = getDefensiveScoreEntry(pokemon.types.map(x => x.toLowerCase()), this.typedDefensiveAbilities[pokemon.selectedAbility]);
+
+                        if (!offensiveness)
+                            offensiveness = getOffensiveScoreEntry(pokemon.types.map(x => x.toLowerCase()), this.possiblePokemonDefenses, this.typedOffensiveAbilities[pokemon.selectedAbility]);
 
                         pokemon.defensiveness = defensiveness;
                         pokemon.offensiveness = offensiveness;
@@ -443,6 +459,83 @@
                         .map(x => ({ ...x, defensiveness: getDefensiveness(x.description) }))
                         .filter(x => Object.keys(x.defensiveness).length)
                         .reduce((acc, x) => (acc[x.name] = x, acc), {});
+                },
+                typedOffensiveAbilities() {
+                    return ABILITIES.reduce((acc, ability) => {
+                        const keywordEffects = [{
+                            keyword: 'hit {DEF_TYPE}',
+                            effect: (defType, offTypes) => ({
+                                applies(typeName) {
+                                    return typeName.toLowerCase() === defType.toLowerCase();
+                                },
+                                calculate(defMultipliers) {
+                                    defMultipliers = { ...defMultipliers };
+
+                                    offTypes.forEach(offType =>
+                                        defMultipliers[offType] = defMultipliers[offType] || 1
+                                    );
+
+                                    return defMultipliers;
+                                }
+                            })
+                        }, {
+                            keyword: 'attacks that are not very effective on a target deal double damage',
+                            effect: () => ({
+                                applies() {
+                                    return true;
+                                },
+                                applyAtEnd: true,
+                                calculate(defMultipliers) {
+                                    defMultipliers = { ...defMultipliers };
+
+                                    Object.keys(defMultipliers).forEach(type => {
+                                        if (defMultipliers[type] > 0 && defMultipliers[type] < 1)
+                                            defMultipliers[type] *= 2;
+                                    });
+
+                                    return defMultipliers;
+                                }
+                            })
+                        }, {
+                            keyword: 'offensive stat is multiplied by 1.5 while using a {OFF_TYPE}-type attack',
+                            effect: (offType) => ({
+                                addOffensiveType: types => [...types, offType.toLowerCase()]
+                            })
+                        }];
+
+                        const TYPE_NAMES = TYPES.map(type => type.name);
+
+                        const res = TYPE_NAMES.map(type => {
+                            const keywordEffect = keywordEffects.find(x => 
+                                ability.description.includes(
+                                    x.keyword
+                                        .replace('{DEF_TYPE}', type)
+                                        .replace('{OFF_TYPE}', type)
+                                )
+                            );
+
+                            if (keywordEffect) {
+                                const description = ability.description
+                                    .replace('{DEF_TYPE}', type)
+                                    .replace('{OFF_TYPE}', type)
+                                    .replace(keywordEffect.keyword, '');
+
+                                const offTypes = TYPE_NAMES.filter(offType => description.includes(offType)).map(x => x.toLowerCase());
+
+                                return { [ability.name]: keywordEffect.effect(type, offTypes) };
+                            }
+                        }).filter(x => x);
+
+                        Object.values(res)
+                            .forEach(ability =>
+                                Object.entries(ability)
+                                    .forEach(([name, fn]) =>
+                                        acc[name] = fn
+                                    )
+                            );
+
+                        return acc;
+                    }, {});
                 },
                 sheetLocations() {
                     const result = {};
