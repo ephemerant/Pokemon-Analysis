@@ -208,6 +208,7 @@ export function getPokemonCoverage(
 }
 
 export const WEAKNESSES = {
+  stellar: {},
   normal: {
     fighting: 2,
     ghost: 0,
@@ -503,6 +504,7 @@ export function getAbilityImmunities(types) {
 }
 
 export const TYPE_COLORS = {
+  stellar: "#aa9",
   normal: "#aa9",
   fire: "#f42",
   water: "#39f",
